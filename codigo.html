@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - Camilla Automatizada</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        * { box-sizing: border-box; }
+
+        body { 
+            font-family: 'Inter', sans-serif; 
+            text-align: center; 
+            background-color: #f4f7f6; /* Gris limpio estilo médico/industrial */
+            margin: 0; 
+            padding: 30px 20px; 
+            color: #2c3e50;
+        }
+
+        h2 { 
+            font-weight: 700;
+            margin-bottom: 5px;
+            color: #1a252f;
+        }
+
+        #status { 
+            margin: 10px auto 30px; 
+            max-width: 400px;
+            font-weight: 600; 
+            color: #7f8c8d; 
+            background: #ffffff;
+            padding: 12px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border-left: 5px solid #bdc3c7;
+            transition: all 0.3s ease;
+        }
+
+        /* Clases dinámicas para el estado */
+        .status-connected { border-left-color: #2ecc71 !important; color: #27ae60 !important; }
+        .status-error { border-left-color: #e74c3c !important; color: #c0392b !important; }
+
+        .grid-container {
+            display: grid;
+            gap: 16px;
+            max-width: 400px;
+            margin: 0 auto;
+        }
+
+        .btn { 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px; /* Espacio entre el icono y el texto */
+            padding: 16px; 
+            font-size: 16px; 
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            color: white; 
+            background-color: #3498db; 
+            border: none; 
+            border-radius: 12px; 
+            cursor: pointer; 
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.3); 
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(52, 152, 219, 0.4); 
+        }
+
+        .btn:active { 
+            transform: translateY(1px); 
+            box-shadow: 0 2px 5px rgba(52, 152, 219, 0.3); 
+        }
+
+        .btn-connect { 
+            background-color: #2ecc71; 
+            font-size: 18px;
+            padding: 20px;
+            box-shadow: 0 4px 15px rgba(46, 204, 113, 0.3);
+            margin-bottom: 10px;
+        }
+        .btn-connect:hover { background-color: #27ae60; box-shadow: 0 6px 20px rgba(46, 204, 113, 0.4); }
+
+        .btn-danger { background-color: #e74c3c; box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3); }
+        .btn-danger:hover { background-color: #c0392b; box-shadow: 0 6px 20px rgba(231, 76, 60, 0.4); }
+
+        .btn-secondary { 
+            background-color: #ffffff; 
+            color: #34495e;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        .btn-secondary:hover { background-color: #ecf0f1; box-shadow: 0 6px 15px rgba(0,0,0,0.08); }
+        
+        /* Ajuste de tamaño para los iconos */
+        .btn i { font-size: 1.2em; }
+    </style>
+</head>
+<body>
+
+    <h2>Control de Camilla Automática</h2>
+    <div id="status">Estado: Desconectado</div>
+
+    <div class="grid-container">
+        <button class="btn btn-connect" onclick="connectBluetooth()">
+            <i class="fa-brands fa-bluetooth-b"></i> Conectar Bluetooth
+        </button>
+
+        <button class="btn" onclick="sendCommand('0')">
+            <i class="fa-solid fa-compress"></i> 0 - Ciclo: Recoger Completo
+        </button>
+        <button class="btn" onclick="sendCommand('1')">
+            <i class="fa-solid fa-expand"></i> 1 - Ciclo: Soltar Completo
+        </button>
+        
+       
+        <button class="btn btn-secondary" onclick="sendCommand('3')">
+            <i class="fa-solid fa-arrow-up"></i> 3 - Extraer 
+        </button>
+        <button class="btn btn-secondary" onclick="sendCommand('4')">
+            <i class="fa-solid fa-arrow-down"></i> 4 - Retraer 
+        </button>
+
+        <button class="btn btn-secondary" onclick="sendCommand('5')">
+            <i class="fa-solid fa-arrow-right-from-bracket"></i> 5 - Soltar 
+        </button>
+        <button class="btn btn-secondary" onclick="sendCommand('6')">
+            <i class="fa-solid fa-arrow-right-to-bracket"></i> 6 - Recoger 
+        </button>
+    </div>
+
+    <script>
+        let bluetoothDevice;
+        let characteristicCache;
+
+        const UART_SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+        const UART_RX_CHARACTERISTIC_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+
+        async function connectBluetooth() {
+            try {
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerText = 'Estado: Buscando dispositivo...';
+                statusDiv.className = '';
+                
+                // Usamos acceptAllDevices para evitar problemas de filtrado inicial
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [UART_SERVICE_UUID]
+                });
+
+                statusDiv.innerText = 'Estado: Conectando...';
+                const server = await bluetoothDevice.gatt.connect();
+
+                statusDiv.innerText = 'Estado: Vinculando servicios...';
+                const service = await server.getPrimaryService(UART_SERVICE_UUID);
+                characteristicCache = await service.getCharacteristic(UART_RX_CHARACTERISTIC_UUID);
+
+                // Conexión exitosa, actualizamos la interfaz
+                statusDiv.innerText = 'Estado: CONECTADO';
+                statusDiv.className = 'status-connected';
+
+                bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+                    statusDiv.innerText = 'Estado: Desconectado';
+                    statusDiv.className = 'status-error';
+                    characteristicCache = null;
+                });
+
+            } catch (error) {
+                console.error('Error:', error);
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerText = 'Estado: Error o cancelado';
+                statusDiv.className = 'status-error';
+            }
+        }
+
+        async function sendCommand(cmd) {
+            if (!characteristicCache) {
+                alert("¡Primero debes conectar el Bluetooth!");
+                return;
+            }
+            try {
+                let encoder = new TextEncoder();
+                await characteristicCache.writeValue(encoder.encode(cmd));
+                console.log('Comando enviado:', cmd);
+            } catch (error) {
+                console.error('Error enviando comando:', error);
+                alert("Error de comunicación. Intenta reconectar.");
+            }
+        }
+    </script>
+</body>
+</html>
